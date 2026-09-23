@@ -538,3 +538,74 @@ describe('Color identity filtering (case insensitive)', () => {
     assertColorIdentityFilter(makeFilter(`ci<>M`));
   });
 });
+
+describe('Word count filter syntax', () => {
+  const cardWithText = (name: string, oracle_text: string): Card =>
+    createCard({ details: createCardDetails({ name, name_lower: name.toLowerCase(), oracle_text }) });
+
+  const shortCard = cardWithText('Short', 'Draw a card');
+  const mediumCard = cardWithText('Medium', 'Draw two cards and gain three life');
+  const longCard = cardWithText(
+    'Long',
+    'Whenever this creature attacks, target opponent reveals their hand and you may cast a spell for free',
+  );
+
+  it.each(['words', 'wc', 'wordcount', 'WORDCOUNT'])('parses %s alias', (alias) => {
+    const { err, filter } = makeFilter(`${alias}>5`);
+    expect(err).toBeFalsy();
+    expect(filter?.fieldsUsed).toEqual(['wordCount']);
+  });
+
+  it('filters by word count', () => {
+    const { filter } = makeFilter('words>5');
+    expect(filter!(shortCard)).toBe(false);
+    expect(filter!(mediumCard)).toBe(true);
+    expect(filter!(longCard)).toBe(true);
+
+    const { filter: filter2 } = makeFilter('wc<=7');
+    expect(filter2!(shortCard)).toBe(true);
+    expect(filter2!(mediumCard)).toBe(true);
+    expect(filter2!(longCard)).toBe(false);
+
+    const { filter: filter3 } = makeFilter('wordcount=7');
+    expect(filter3!(shortCard)).toBe(false);
+    expect(filter3!(mediumCard)).toBe(true);
+    expect(filter3!(longCard)).toBe(false);
+  });
+});
+
+describe('Quantity filter syntax', () => {
+  const single = createCard({ details: createCardDetails({ name: 'Solo', name_lower: 'solo' }) });
+  const paired = { ...createCard({ details: createCardDetails({ name: 'Duo', name_lower: 'duo' }) }), quantity: 2 };
+  const trio = { ...createCard({ details: createCardDetails({ name: 'Trio', name_lower: 'trio' }) }), quantity: 3 };
+
+  it.each(['quantity', 'count', 'copies', 'QUANTITY'])('parses %s alias', (alias) => {
+    const { err, filter } = makeFilter(`${alias}>1`);
+    expect(err).toBeFalsy();
+    expect(filter?.fieldsUsed).toEqual(['quantity']);
+  });
+
+  it('filters unannotated cards as singletons', () => {
+    const { filter } = makeFilter('quantity=1');
+    expect(filter!(single)).toBe(true);
+    expect(filter!(paired)).toBe(false);
+  });
+
+  it('filters by stamped quantity', () => {
+    const { filter } = makeFilter('copies>=2');
+    expect(filter!(single)).toBe(false);
+    expect(filter!(paired)).toBe(true);
+    expect(filter!(trio)).toBe(true);
+  });
+
+  it('is:singleton matches unannotated and quantity=1 cards, not:singleton the rest', () => {
+    const { filter: isFilter } = makeFilter('is:singleton');
+    expect(isFilter!(single)).toBe(true);
+    expect(isFilter!(paired)).toBe(false);
+
+    const { filter: notFilter } = makeFilter('not:singleton');
+    expect(notFilter!(single)).toBe(false);
+    expect(notFilter!(paired)).toBe(true);
+    expect(notFilter!(trio)).toBe(true);
+  });
+});
